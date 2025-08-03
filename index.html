@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VibeCoding Games - 게임 모음</title>
+    <title>박민교의 무한한 알과 세계</title>
     <style>
         * {
             margin: 0;
@@ -15,146 +15,103 @@
             font-family: 'Arial', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .header {
+        .game-container {
             text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+            margin: 20px;
+        }
+
+        .game-title {
             color: white;
-            margin-bottom: 40px;
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
         }
 
-        .header h1 {
-            font-size: 3rem;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .header p {
-            font-size: 1.2rem;
+        .game-description {
+            color: white;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
             opacity: 0.9;
+            line-height: 1.6;
         }
 
-        .games-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-            margin-bottom: 40px;
-        }
-
-        .game-card {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            text-decoration: none;
-            color: inherit;
-        }
-
-        .game-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
-        }
-
-        .game-card h3 {
-            color: #333;
-            font-size: 1.5rem;
-            margin-bottom: 10px;
-        }
-
-        .game-card p {
-            color: #666;
-            margin-bottom: 15px;
-            line-height: 1.5;
-        }
-
-        .game-card .play-button {
+        .play-button {
             background: linear-gradient(45deg, #ff6b6b, #ee5a24);
             color: white;
-            padding: 10px 20px;
-            border-radius: 25px;
+            padding: 15px 40px;
+            border-radius: 50px;
             text-decoration: none;
-            display: inline-block;
+            font-size: 1.2rem;
             font-weight: bold;
-            transition: transform 0.2s ease;
+            display: inline-block;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
 
-        .game-card .play-button:hover {
-            transform: scale(1.05);
+        .play-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
         }
 
-        .footer {
-            text-align: center;
+        .controls-info {
             color: white;
-            margin-top: 40px;
+            font-size: 0.9rem;
+            margin-top: 20px;
             opacity: 0.8;
+            line-height: 1.4;
         }
 
         @media (max-width: 768px) {
-            .header h1 {
+            .game-title {
                 font-size: 2rem;
             }
             
-            .games-grid {
-                grid-template-columns: 1fr;
+            .game-description {
+                font-size: 1rem;
+            }
+            
+            .play-button {
+                padding: 12px 30px;
+                font-size: 1.1rem;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎮 VibeCoding Games</h1>
-            <p>재미있는 게임들을 즐겨보세요!</p>
-        </div>
-
-        <div class="games-grid">
-            <a href="parkmingyo-game.html" class="game-card">
-                <h3>🍌 바나나 히어로의 모험</h3>
-                <p>바나나를 던져서 적들을 물리치는 재미있는 플랫폼 게임입니다. 좌우 이동과 점프, 바나나 던지기로 적들을 물리쳐보세요!</p>
-                <div class="play-button">게임 시작</div>
-            </a>
-
-            <a href="superhero-adventure.html" class="game-card">
-                <h3>🦸‍♂️ 슈퍼히어로 모험</h3>
-                <p>슈퍼히어로가 되어 악당들과 싸우는 액션 게임입니다. 특별한 능력들을 사용해서 세계를 구해보세요!</p>
-                <div class="play-button">게임 시작</div>
-            </a>
-
-            <a href="examples/workflow-demos/workflow-1-banana-hero-game.html" class="game-card">
-                <h3>🍌 바나나 히어로 (데모)</h3>
-                <p>워크플로우 데모 버전의 바나나 히어로 게임입니다. 단계별로 만들어진 게임을 체험해보세요!</p>
-                <div class="play-button">게임 시작</div>
-            </a>
-
-            <a href="examples/workflow-demos/workflow-2-problem-solver-game.html" class="game-card">
-                <h3>🧩 문제 해결 게임</h3>
-                <p>논리적 사고를 요구하는 퍼즐 게임입니다. 문제를 해결하면서 두뇌를 단련해보세요!</p>
-                <div class="play-button">게임 시작</div>
-            </a>
-
-            <a href="examples/workflow-demos/workflow-4-storytelling-adventure.html" class="game-card">
-                <h3>📖 스토리텔링 모험</h3>
-                <p>선택에 따라 이야기가 달라지는 인터랙티브 스토리 게임입니다. 당신의 선택이 이야기를 만들어갑니다!</p>
-                <div class="play-button">게임 시작</div>
-            </a>
-
-            <a href="ai-rules-generator.html" class="game-card">
-                <h3>🤖 AI 규칙 생성기</h3>
-                <p>AI와 함께 게임 규칙을 만들어보는 도구입니다. 창의적인 게임 아이디어를 개발해보세요!</p>
-                <div class="play-button">도구 사용</div>
-            </a>
-        </div>
-
-        <div class="footer">
-            <p>© 2024 VibeCoding Games - 모두를 위한 재미있는 코딩 게임</p>
+    <div class="game-container">
+        <h1 class="game-title">🏆 박민교의 무한한 알과 세계 🏆</h1>
+        
+        <p class="game-description">
+            바나나를 던져서 적들을 물리치는 재미있는 플랫폼 게임입니다!<br>
+            다양한 세계를 탐험하고 특별한 알들을 수집해보세요!
+        </p>
+        
+        <a href="parkmingyo-game.html" class="play-button">🎮 게임 시작하기</a>
+        
+        <div class="controls-info">
+            <strong>조작법:</strong><br>
+            방향키: 이동 | 스페이스바: 점프 | A키: 총알 발사<br>
+            X키: 특수능력 | S키: 상점 | B키: 총알 구매<br>
+            R키: 부활 | P키: 차원문 | N키: 다음 지역 이동
         </div>
     </div>
+
+    <script>
+        // 자동으로 게임 페이지로 리다이렉트 (3초 후)
+        setTimeout(() => {
+            window.location.href = 'parkmingyo-game.html';
+        }, 3000);
+    </script>
 </body>
 </html> 

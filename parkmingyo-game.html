@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>박민교의 무한한 알과 세계</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(to bottom, #87CEEB, #98FB98);
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 3px solid #333;
+            background: linear-gradient(to bottom, #87CEEB 0%, #98FB98 70%, #8B4513 100%);
+            display: block;
+            margin: 0 auto;
+        }
+        .game-info {
+            text-align: center;
+            margin: 10px;
+            font-size: 18px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-info">
+        <h1>🏆 박민교의 무한한 알과 세계 🏆</h1>
+                 <p>방향키: 이동 | 스페이스: 점프 | A: 총알 발사 | X: 특수능력 | S: 상점 | B: 총알 구매 | R: 부활 | P: 차원문 | N: 다음 지역 이동 | 적과 부딪히면 피가 달아 없어져요!</p>
+    </div>
+    <canvas id="gameCanvas" width="1000" height="600"></canvas>
+
+    <script>
+        // 게임 캔버스 설정
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+                 // 게임 상태
+         let gameState = {
+             score: 0,
+             coins: 0,
+             level: 1,
+             world: 'ground', // ground, ice, sky, fire, water, wind, dark, light, time
+             shopOpen: false,
+             shopInside: false,
+             blackHoleActive: false,
+             blackHoleX: 0,
+             blackHoleY: 0,
+             blackHoleTime: 0,
+             companionBird: null,
+             characterType: 'default', // default, fire, ice, wind
+             gameOver: false,
+             playerDead: false,
+             caveHealth: 100, // 동굴 체력
+             portalActive: false, // 차원문 활성화 상태
+             portalX: 0,
+             portalY: 0,
+             monstersKilled: 0, // 죽인 괴물 수
+             canMoveToNextArea: false, // 다음 지역 이동 가능 여부
+             currentArea: 1, // 현재 지역 번호
+             inventoryOpen: false, // 인벤토리 열림 상태
+             bulletInventory: {
+                 normal: { count: 50, maxCount: 100, name: '일반 총알', color: '#FFD700', damage: 1 },
+                 fire: { count: 0, maxCount: 50, name: '불 총알', color: '#FF4500', damage: 2 },
+                 ice: { count: 0, maxCount: 50, name: '얼음 총알', color: '#87CEEB', damage: 1.5 },
+                 lightning: { count: 0, maxCount: 30, name: '번개 총알', color: '#FFFF00', damage: 3 },
+                 poison: { count: 0, maxCount: 40, name: '독 총알', color: '#32CD32', damage: 1.8 }
+             },
+             selectedBulletType: 'normal' // 현재 선택된 총알 타입
+         };
+
+        // 특별한 알 (검은 알)
+        let specialEgg = createSpecialEgg();
+
+        // 박민교 캐릭터
+        const player = {
+            x: 100,
+            y: 450,
+            width: 40,
+            height: 60,
+            velocityX: 0,
+            velocityY: 0,
+            speed: 5,
+            jumpPower: 25, // 점프력 증가
+            isJumping: false,
+            health: 100,
+            maxHealth: 100,
+            ammo: 20,
+            maxAmmo: 20,
+            isInvincible: false,
+            invincibleTime: 0
+        };
+
+        // 적들 배열
+        const enemies = [];
+        const bullets = [];
+        const coins = [];
+        const eggs = [];
+        const guns = [];
+        const ammoBoxes = [];
+        const clouds = [];
+        const ladders = createLadders();
+
+        // 키보드 입력
+        const keys = {};
+
+        // 키보드 이벤트
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            
+            // 총알 발사
+            if (e.key === 'a' || e.key === 'A') {
+                fireBullet();
+            }
+            
+            // 특수능력
+            if (e.key === 'x' || e.key === 'X') {
+                useSpecialAbility();
+            }
+            
+            // 상점 열기/닫기
+            if (e.key === 's' || e.key === 'S') {
+                if (gameState.shopInside) {
+                    // 상점 안에서 나가기
+                    gameState.shopInside = false;
+                    gameState.shopOpen = false;
+                    player.x = 100;
+                    player.y = 450;
+                } else if (checkPlayerInShop()) {
+                    // 상점 앞에서 상점 안으로 들어가기
+                    gameState.shopInside = true;
+                    gameState.shopOpen = true;
+                    player.x = 400;
+                    player.y = 300;
+                } else {
+                    // 상점 UI 열기/닫기
+                    gameState.shopOpen = !gameState.shopOpen;
+                }
+            }
+            
+            // 상점에서 총알 구매
+            if (e.key === 'b' || e.key === 'B') {
+                if (gameState.shopOpen) {
+                    buyAmmo();
+                } else if (gameState.companionBird) {
+                    // 블랙홀 소환 (B키)
+                    createBlackHole();
+                }
+            }
+            
+                         // 캐릭터 변경
+             if (gameState.shopOpen) {
+                 if (e.key === '1') {
+                     changeCharacter('fire');
+                 } else if (e.key === '2') {
+                     changeCharacter('ice');
+                 } else if (e.key === '3') {
+                     changeCharacter('wind');
+                 }
+             }
+             
+             // 부활 (R키)
+             if (e.key === 'r' || e.key === 'R') {
+                 if (gameState.playerDead) {
+                     respawnPlayer();
+                 }
+             }
+             
+             // 차원문 진입 (P키)
+             if (e.key === 'p' || e.key === 'P') {
+                 if (gameState.portalActive && checkPlayerInPortal()) {
+                     enterPortal();
+                 }
+             }
+             
+             // 다음 지역 이동 (N키)
+             if (e.key === 'n' || e.key === 'N') {
+                 if (gameState.canMoveToNextArea) {
+                     moveToNextArea();
+                 }
+             }
+             
+             // 인벤토리 열기/닫기 (I키)
+             if (e.key === 'i' || e.key === 'I') {
+                 gameState.inventoryOpen = !gameState.inventoryOpen;
+             }
+             
+             // 총알 타입 선택 (인벤토리에서)
+             if (gameState.inventoryOpen) {
+                 if (e.key === '1') {
+                     selectBulletType('normal');
+                 } else if (e.key === '2') {
+                     selectBulletType('fire');
+                 } else if (e.key === '3') {
+                     selectBulletType('ice');
+                 } else if (e.key === '4') {
+                     selectBulletType('lightning');
+                 } else if (e.key === '5') {
+                     selectBulletType('poison');
+                 }
+             }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // 총알 발사 함수
+        function fireBullet() {
+            const selectedBullet = gameState.bulletInventory[gameState.selectedBulletType];
+            if (selectedBullet && selectedBullet.count > 0) {
+                bullets.push({
+                    x: player.x + player.width,
+                    y: player.y + player.height / 2,
+                    width: 10,
+                    height: 5,
+                    speed: 10,
+                    color: selectedBullet.color,
+                    type: gameState.selectedBulletType,
+                    damage: selectedBullet.damage
+                });
+                selectedBullet.count--;
+                
+                // 총소리 효과 (비프음)
+                playGunSound();
+            }
+        }
+
+        // 총소리 재생 함수
+        function playGunSound() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+        }
+
+        // 상점에서 총알 구매 함수
+        function buyAmmo() {
+            if (gameState.coins >= 1) {
+                gameState.coins -= 1;
+                const selectedBullet = gameState.bulletInventory[gameState.selectedBulletType];
+                if (selectedBullet) {
+                    selectedBullet.count = Math.min(selectedBullet.maxCount, selectedBullet.count + 20);
+                }
+            }
+        }
+        
+        // 총알 타입 선택 함수
+        function selectBulletType(type) {
+            if (gameState.bulletInventory[type]) {
+                gameState.selectedBulletType = type;
+                console.log(`선택된 총알: ${gameState.bulletInventory[type].name}`);
+            }
+        }
+
+        // 캐릭터 변경 함수
+        function changeCharacter(type) {
+            if (gameState.coins >= 5) {
+                gameState.coins -= 5;
+                gameState.characterType = type;
+                
+                // 캐릭터별 특별 능력
+                switch(type) {
+                    case 'fire':
+                        player.maxHealth = 120;
+                        player.health = 120;
+                        break;
+                    case 'ice':
+                        player.maxAmmo = 30;
+                        player.ammo = 30;
+                        break;
+                    case 'wind':
+                        player.jumpPower = 20;
+                        break;
+                }
+            }
+        }
+
+        // 구름 생성 함수
+        function createClouds() {
+            const cloudTypes = [
+                { name: 'fluffy', size: 1.2, parts: 5, color: '#FFFFFF' },
+                { name: 'wispy', size: 0.8, parts: 3, color: '#F0F8FF' },
+                { name: 'puffy', size: 1.0, parts: 4, color: '#F5F5F5' },
+                { name: 'stormy', size: 1.1, parts: 6, color: '#E6E6FA' },
+                { name: 'cotton', size: 0.9, parts: 4, color: '#FAFAFA' }
+            ];
+            
+            for (let i = 0; i < 5; i++) {
+                const cloudType = cloudTypes[i % cloudTypes.length];
+                clouds.push({
+                    x: 100 + i * 200,
+                    y: 50 + i * 20,
+                    width: 90 * cloudType.size,
+                    height: 30 * cloudType.size,
+                    canStand: true,
+                    type: cloudType.name,
+                    color: cloudType.color,
+                    parts: cloudType.parts,
+                    baseSize: cloudType.size
+                });
+            }
+        }
+
+        // 사다리 생성 함수
+        function createLadders() {
+            return [
+                // 동굴 앞 긴 사다리 (동굴 위로 가는 사다리)
+                {
+                    x: canvas.width - 120,
+                    y: 450,
+                    width: 20,
+                    height: 150,
+                    color: '#8B4513'
+                },
+                // 동굴 위로 가는 사다리
+                {
+                    x: canvas.width - 50,
+                    y: 380,
+                    width: 20,
+                    height: 80,
+                    color: '#8B4513'
+                },
+                // 첫 번째 구름으로 가는 사다리
+                {
+                    x: 150,
+                    y: 450,
+                    width: 20,
+                    height: 120,
+                    color: '#8B4513'
+                },
+                // 구름들 사이의 사다리들
+                {
+                    x: 350,
+                    y: 450,
+                    width: 20,
+                    height: 100,
+                    color: '#8B4513'
+                },
+                {
+                    x: 550,
+                    y: 450,
+                    width: 20,
+                    height: 80,
+                    color: '#8B4513'
+                },
+                {
+                    x: 750,
+                    y: 450,
+                    width: 20,
+                    height: 60,
+                    color: '#8B4513'
+                }
+            ];
+        }
+
+        // 특별한 알 생성 함수 (검은 알)
+        function createSpecialEgg() {
+            return {
+                x: 100 + 3 * 200 + 30, // 4번째 구름 위치
+                y: 50 + 3 * 20 - 40,
+                width: 30,
+                height: 40,
+                type: 'special',
+                color: '#000000', // 검은색
+                collected: false
+            };
+        }
+
+        // 블랙홀 생성 함수
+        function createBlackHole() {
+            gameState.blackHoleActive = true;
+            gameState.blackHoleX = player.x + 50;
+            gameState.blackHoleY = player.y + 30;
+            gameState.blackHoleTime = 120; // 2초간 지속
+        }
+
+        // 따라오는 새 생성 함수
+        function createCompanionBird() {
+            gameState.companionBird = {
+                x: player.x - 20,
+                y: player.y - 10,
+                width: 20,
+                height: 15,
+                color: '#000000',
+                followDistance: 20 // 2cm 간격
+            };
+        }
+
+                 // 상점 앞에 있는지 확인하는 함수
+         function checkPlayerInShop() {
+             return player.x > 50 && player.x < 130 && 
+                    player.y > 400 && player.y < 500;
+         }
+         
+         // 플레이어 부활 함수
+         function respawnPlayer() {
+             player.health = player.maxHealth;
+             player.x = 100;
+             player.y = 450;
+             player.velocityY = 0;
+             player.isJumping = false;
+             player.isInvincible = false;
+             player.invincibleTime = 0;
+             gameState.playerDead = false;
+             gameState.gameOver = false;
+         }
+         
+         // 차원문 앞에 있는지 확인하는 함수
+         function checkPlayerInPortal() {
+             return player.x > gameState.portalX - 30 && player.x < gameState.portalX + 60 && 
+                    player.y > gameState.portalY - 20 && player.y < gameState.portalY + 100;
+         }
+         
+         // 차원문 진입 함수
+         function enterPortal() {
+             // 새로운 세계로 이동
+             const worlds = ['ice', 'fire', 'water', 'wind', 'dark', 'light', 'time'];
+             const currentIndex = worlds.indexOf(gameState.world);
+             const nextIndex = (currentIndex + 1) % worlds.length;
+             gameState.world = worlds[nextIndex];
+             
+             // 플레이어 위치 리셋
+             player.x = 100;
+             player.y = 450;
+             
+             // 동굴 체력 회복
+             gameState.caveHealth = 100;
+             gameState.portalActive = false;
+             
+             // 점수 보너스
+             gameState.score += 500;
+             gameState.coins += 20;
+             
+             console.log(`새로운 세계로 이동: ${gameState.world}`);
+         }
+         
+         // 다음 지역 이동 함수
+         function moveToNextArea() {
+             gameState.currentArea++;
+             gameState.monstersKilled = 0;
+             gameState.canMoveToNextArea = false;
+             
+             // 플레이어 위치 리셋
+             player.x = 100;
+             player.y = 450;
+             
+             // 모든 적 제거
+             enemies.length = 0;
+             
+             // 점수 보너스
+             gameState.score += 1000;
+             gameState.coins += 50;
+             
+             // 레벨 업
+             gameState.level++;
+             
+             console.log(`다음 지역으로 이동: 지역 ${gameState.currentArea}`);
+         }
+
+        // 특수능력 사용
+        function useSpecialAbility() {
+            // 현재 세계에 따른 특수능력
+            switch(gameState.world) {
+                case 'ice':
+                    // 얼음 능력: 적들을 얼려버리기
+                    enemies.forEach(enemy => {
+                        enemy.frozen = true;
+                        enemy.frozenTime = 100;
+                    });
+                    break;
+                case 'fire':
+                    // 불 능력: 강력한 폭발
+                    enemies.forEach(enemy => {
+                        enemy.health -= 20;
+                    });
+                    break;
+                case 'wind':
+                    // 바람 능력: 높이 점프
+                    player.velocityY = -25;
+                    break;
+            }
+        }
+
+        // 적 생성 함수
+        function createEnemy() {
+            const types = ['mini', 'medium', 'boss'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            
+            let enemy = {
+                x: canvas.width,
+                y: 450,
+                width: 40,
+                height: 50,
+                type: type,
+                health: 0,
+                speed: 0,
+                attack: 0,
+                coinValue: 0,
+                color: '#FF0000',
+                frozen: false,
+                frozenTime: 0
+            };
+
+            switch(type) {
+                case 'mini':
+                    enemy.health = 5;
+                    enemy.speed = 4;
+                    enemy.attack = 1;
+                    enemy.coinValue = 1;
+                    enemy.color = '#FF6B6B';
+                    break;
+                case 'medium':
+                    enemy.health = 15;
+                    enemy.speed = 2;
+                    enemy.attack = 5;
+                    enemy.coinValue = 3;
+                    enemy.color = '#FF8C00';
+                    break;
+                case 'boss':
+                    enemy.health = 50;
+                    enemy.speed = 1;
+                    enemy.attack = 10;
+                    enemy.coinValue = 5;
+                    enemy.color = '#8B0000';
+                    enemy.width = 60;
+                    enemy.height = 80;
+                    break;
+            }
+
+            enemies.push(enemy);
+        }
+
+        // 알 생성 함수
+        function createEgg() {
+            const eggTypes = ['gum', 'ice', 'fire', 'water', 'wind', 'dark', 'light', 'time'];
+            const type = eggTypes[Math.floor(Math.random() * eggTypes.length)];
+            
+            eggs.push({
+                x: Math.random() * (canvas.width - 30),
+                y: Math.random() * 200 + 50,
+                width: 30,
+                height: 40,
+                type: type,
+                color: getEggColor(type),
+                collected: false
+            });
+        }
+
+        // 총 생성 함수
+        function createGun() {
+            guns.push({
+                x: Math.random() * (canvas.width - 40),
+                y: 450,
+                width: 30,
+                height: 15,
+                color: '#8B4513',
+                collected: false
+            });
+        }
+
+        // 총알 상자 생성 함수
+        function createAmmoBox() {
+            ammoBoxes.push({
+                x: Math.random() * (canvas.width - 30),
+                y: 450,
+                width: 25,
+                height: 20,
+                ammo: 10,
+                color: '#FFD700',
+                collected: false
+            });
+        }
+
+        // 알 색상 함수
+        function getEggColor(type) {
+            const colors = {
+                'gum': '#FFB6C1',
+                'ice': '#87CEEB',
+                'fire': '#FF4500',
+                'water': '#4169E1',
+                'wind': '#F0F8FF',
+                'dark': '#2F4F4F',
+                'light': '#FFFFE0',
+                'time': '#DDA0DD'
+            };
+            return colors[type] || '#FFFFFF';
+        }
+
+        // 충돌 감지 함수
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // 게임 업데이트 함수
+        function updateGame() {
+            // 플레이어 이동
+            if (keys['ArrowLeft'] && player.x > 0) {
+                player.x -= player.speed;
+            }
+            if (keys['ArrowRight'] && player.x < canvas.width - player.width) {
+                player.x += player.speed;
+            }
+            if (keys[' '] && !player.isJumping) {
+                player.velocityY = -player.jumpPower;
+                player.isJumping = true;
+            }
+
+            // 중력
+            player.velocityY += 0.8;
+            player.y += player.velocityY;
+
+            // 바닥 충돌
+            if (player.y > 450) {
+                player.y = 450;
+                player.velocityY = 0;
+                player.isJumping = false;
+            }
+            
+            // 동굴 위 플랫폼 충돌
+            if (player.x > canvas.width - 100 && player.x < canvas.width && 
+                player.y > 360 && player.y < 380 && player.velocityY > 0) {
+                player.y = 360;
+                player.velocityY = 0;
+                player.isJumping = false;
+            }
+
+            // 구름 충돌 감지
+            clouds.forEach(cloud => {
+                if (player.x + player.width > cloud.x && 
+                    player.x < cloud.x + cloud.width &&
+                    player.y + player.height > cloud.y && 
+                    player.y + player.height < cloud.y + cloud.height + 15 && // 충돌 범위 증가
+                    player.velocityY > 0) {
+                    player.y = cloud.y - player.height;
+                    player.velocityY = 0;
+                    player.isJumping = false;
+                }
+            });
+
+            // 사다리 충돌 감지
+            ladders.forEach(ladder => {
+                if (player.x + player.width > ladder.x && 
+                    player.x < ladder.x + ladder.width &&
+                    player.y + player.height > ladder.y && 
+                    player.y < ladder.y + ladder.height) {
+                    
+                    // 사다리 위로 올라가기
+                    if (keys['ArrowUp']) {
+                        player.y -= 4; // 사다리 오르기 속도 증가
+                        player.velocityY = 0;
+                        player.isJumping = false;
+                    }
+                    // 사다리 아래로 내려가기
+                    if (keys['ArrowDown']) {
+                        player.y += 4; // 사다리 내려가기 속도 증가
+                        player.velocityY = 0;
+                        player.isJumping = false;
+                    }
+                }
+            });
+
+            // 총알 업데이트
+            bullets.forEach((bullet, index) => {
+                bullet.x += bullet.speed;
+                if (bullet.x > canvas.width) {
+                    bullets.splice(index, 1);
+                }
+            });
+
+            // 적 업데이트
+            enemies.forEach((enemy, index) => {
+                if (!enemy.frozen) {
+                    enemy.x -= enemy.speed;
+                } else {
+                    enemy.frozenTime--;
+                    if (enemy.frozenTime <= 0) {
+                        enemy.frozen = false;
+                    }
+                }
+                
+                // 상태 효과 업데이트
+                if (enemy.burning && enemy.burnTime > 0) {
+                    enemy.health -= 0.5;
+                    enemy.burnTime--;
+                    if (enemy.burnTime <= 0) {
+                        enemy.burning = false;
+                    }
+                }
+                
+                if (enemy.poisoned && enemy.poisonTime > 0) {
+                    enemy.health -= 0.3;
+                    enemy.poisonTime--;
+                    if (enemy.poisonTime <= 0) {
+                        enemy.poisoned = false;
+                    }
+                }
+
+                if (enemy.x + enemy.width < 0) {
+                    enemies.splice(index, 1);
+                }
+            });
+
+            // 충돌 감지
+            // 총알과 적
+            bullets.forEach((bullet, bIndex) => {
+                enemies.forEach((enemy, eIndex) => {
+                    if (checkCollision(bullet, enemy)) {
+                        // 총알 타입에 따른 데미지 적용
+                        const damage = bullet.damage || 1;
+                        enemy.health -= damage * 10;
+                        bullets.splice(bIndex, 1);
+                        
+                        // 총알 타입별 특수 효과
+                        if (bullet.type === 'fire') {
+                            // 불 총알: 지속 데미지
+                            enemy.burning = true;
+                            enemy.burnTime = 30;
+                        } else if (bullet.type === 'ice') {
+                            // 얼음 총알: 빙결 효과
+                            enemy.frozen = true;
+                            enemy.frozenTime = 60;
+                        } else if (bullet.type === 'lightning') {
+                            // 번개 총알: 체인 데미지
+                            enemies.forEach((otherEnemy, otherIndex) => {
+                                if (otherIndex !== eIndex && Math.abs(otherEnemy.x - enemy.x) < 100) {
+                                    otherEnemy.health -= 5;
+                                }
+                            });
+                        } else if (bullet.type === 'poison') {
+                            // 독 총알: 독 데미지
+                            enemy.poisoned = true;
+                            enemy.poisonTime = 45;
+                        }
+                        
+                        if (enemy.health <= 0) {
+                            // 코인 생성
+                            coins.push({
+                                x: enemy.x,
+                                y: enemy.y,
+                                width: 20,
+                                height: 20,
+                                value: enemy.coinValue,
+                                collected: false
+                            });
+                            
+                            gameState.score += enemy.coinValue * 10;
+                            gameState.monstersKilled++; // 괴물 사냥 카운터 증가
+                            enemies.splice(eIndex, 1);
+                            
+                            // 50마리 죽이면 다음 지역 이동 가능
+                            if (gameState.monstersKilled >= 50 && !gameState.canMoveToNextArea) {
+                                gameState.canMoveToNextArea = true;
+                                console.log("50마리 괴물을 모두 처치했습니다! N키로 다음 지역으로 이동하세요!");
+                            }
+                        }
+                    }
+                });
+            });
+
+            // 플레이어와 코인
+            coins.forEach((coin, index) => {
+                if (checkCollision(player, coin) && !coin.collected) {
+                    gameState.coins += coin.value;
+                    coin.collected = true;
+                    coins.splice(index, 1);
+                }
+            });
+
+            // 플레이어와 알
+            eggs.forEach((egg, index) => {
+                if (checkCollision(player, egg) && !egg.collected) {
+                    egg.collected = true;
+                    eggs.splice(index, 1);
+                    // 알 수집 효과
+                    gameState.score += 50;
+                }
+            });
+
+            // 플레이어와 특별한 알 (검은 알)
+            if (specialEgg && !specialEgg.collected && checkCollision(player, specialEgg)) {
+                specialEgg.collected = true;
+                // 검은 알 수집 효과 - 따라오는 새 생성
+                gameState.score += 200;
+                gameState.coins += 10;
+                createCompanionBird();
+            }
+
+            // 플레이어와 총
+            guns.forEach((gun, index) => {
+                if (checkCollision(player, gun) && !gun.collected) {
+                    gun.collected = true;
+                    guns.splice(index, 1);
+                    // 총 획득 효과
+                    gameState.score += 100;
+                }
+            });
+
+            // 플레이어와 총알 상자
+            ammoBoxes.forEach((ammoBox, index) => {
+                if (checkCollision(player, ammoBox) && !ammoBox.collected) {
+                    // 인벤토리에 총알 추가
+                    const selectedBullet = gameState.bulletInventory[gameState.selectedBulletType];
+                    if (selectedBullet) {
+                        selectedBullet.count = Math.min(selectedBullet.maxCount, selectedBullet.count + ammoBox.ammo);
+                    }
+                    ammoBox.collected = true;
+                    ammoBoxes.splice(index, 1);
+                    // 총알 획득 효과
+                    gameState.score += 20;
+                }
+            });
+
+                         // 플레이어와 적 (피가 달아 없어지는 효과)
+             enemies.forEach(enemy => {
+                 if (checkCollision(player, enemy) && !player.isInvincible && !gameState.playerDead) {
+                     // 피가 달아 없어지는 효과
+                     player.health -= enemy.attack;
+                     player.isInvincible = true;
+                     player.invincibleTime = 60; // 1초간 무적
+                     
+                     if (player.health <= 0) {
+                         player.health = 0; // 체력을 0으로 고정
+                         gameState.playerDead = true;
+                         gameState.gameOver = true;
+                     }
+                 }
+             });
+             
+             // 동굴 체력 감소 (적이 화면을 벗어날 때)
+             enemies.forEach((enemy, index) => {
+                 if (enemy.x + enemy.width < 0) {
+                     // 동굴 체력 감소
+                     gameState.caveHealth -= 5;
+                     enemies.splice(index, 1);
+                     
+                     // 동굴 체력이 0 이하가 되면 차원문 생성
+                     if (gameState.caveHealth <= 0 && !gameState.portalActive) {
+                         gameState.caveHealth = 0;
+                         gameState.portalActive = true;
+                         gameState.portalX = canvas.width - 100; // 동굴 위치
+                         gameState.portalY = 400;
+                         console.log("차원문이 열렸습니다!");
+                     }
+                 }
+             });
+
+            // 무적 시간 업데이트
+            if (player.isInvincible) {
+                player.invincibleTime--;
+                if (player.invincibleTime <= 0) {
+                    player.isInvincible = false;
+                }
+            }
+
+            // 따라오는 새 업데이트
+            if (gameState.companionBird) {
+                // 플레이어를 따라오도록 위치 조정
+                const targetX = player.x - gameState.companionBird.followDistance;
+                const targetY = player.y - 10;
+                
+                gameState.companionBird.x += (targetX - gameState.companionBird.x) * 0.1;
+                gameState.companionBird.y += (targetY - gameState.companionBird.y) * 0.1;
+            }
+
+            // 블랙홀 업데이트
+            if (gameState.blackHoleActive) {
+                gameState.blackHoleTime--;
+                
+                // 블랙홀에 적들이 끌려들어감
+                enemies.forEach((enemy, index) => {
+                    const distance = Math.sqrt(
+                        Math.pow(enemy.x - gameState.blackHoleX, 2) + 
+                        Math.pow(enemy.y - gameState.blackHoleY, 2)
+                    );
+                    
+                    if (distance < 100) {
+                        // 블랙홀 중심으로 끌려들어감
+                        enemy.x += (gameState.blackHoleX - enemy.x) * 0.05;
+                        enemy.y += (gameState.blackHoleY - enemy.y) * 0.05;
+                        
+                        // 블랙홀 중심에 가까우면 제거
+                        if (distance < 20) {
+                            enemies.splice(index, 1);
+                            gameState.score += 50;
+                        }
+                    }
+                });
+                
+                if (gameState.blackHoleTime <= 0) {
+                    gameState.blackHoleActive = false;
+                }
+            }
+        }
+
+                 // 게임 오버 함수
+         function gameOver() {
+             ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+             ctx.fillRect(0, 0, canvas.width, canvas.height);
+             
+             ctx.fillStyle = '#FF0000';
+             ctx.font = '48px Arial';
+             ctx.fillText('게임 오버!', canvas.width/2 - 100, canvas.height/2);
+             
+             ctx.fillStyle = '#FFFFFF';
+             ctx.font = '24px Arial';
+             ctx.fillText(`최종 점수: ${gameState.score}`, canvas.width/2 - 80, canvas.height/2 + 50);
+             ctx.fillText(`수집한 코인: ${gameState.coins}`, canvas.width/2 - 80, canvas.height/2 + 80);
+             ctx.fillText('R키로 부활하기', canvas.width/2 - 80, canvas.height/2 + 110);
+         }
+
+                 // 그리기 함수들
+         function drawPlayer() {
+             // 플레이어가 죽었으면 그리지 않음
+             if (gameState.playerDead) {
+                 return;
+             }
+             
+             // 무적 상태일 때 깜빡이는 효과
+             if (player.isInvincible && Math.floor(player.invincibleTime / 10) % 2 === 0) {
+                 return; // 깜빡이는 동안 그리지 않음
+             }
+            
+            // 캐릭터 타입에 따른 색상
+            let bodyColor = '#8B4513';
+            let faceColor = '#FFD700';
+            
+            switch(gameState.characterType) {
+                case 'fire':
+                    bodyColor = '#FF4500';
+                    faceColor = '#FFD700';
+                    break;
+                case 'ice':
+                    bodyColor = '#87CEEB';
+                    faceColor = '#FFFFFF';
+                    break;
+                case 'wind':
+                    bodyColor = '#98FB98';
+                    faceColor = '#32CD32';
+                    break;
+            }
+            
+            // 몸체
+            ctx.fillStyle = bodyColor;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            // 얼굴
+            ctx.fillStyle = faceColor;
+            ctx.beginPath();
+            ctx.arc(player.x + player.width/2, player.y + 15, 12, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 눈
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(player.x + player.width/2 - 5, player.y + 12, 2, 0, Math.PI * 2);
+            ctx.arc(player.x + player.width/2 + 5, player.y + 12, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 모자 (캐릭터 타입에 따른 다른 모자)
+            let hatColor = '#8B0000'; // 기본 빨간 모자
+            switch(gameState.characterType) {
+                case 'fire':
+                    hatColor = '#FF4500'; // 불타는 오렌지 모자
+                    break;
+                case 'ice':
+                    hatColor = '#87CEEB'; // 하늘색 모자
+                    break;
+                case 'wind':
+                    hatColor = '#32CD32'; // 초록색 모자
+                    break;
+            }
+            
+            // 모자 그리기 (둥근 모자)
+            ctx.fillStyle = hatColor;
+            ctx.beginPath();
+            ctx.arc(player.x + player.width/2, player.y + 5, 15, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 모자 테두리
+            ctx.fillStyle = '#654321';
+            ctx.fillRect(player.x + 5, player.y + 8, player.width - 10, 3);
+            
+            // 모자 장식 (캐릭터 타입별)
+            switch(gameState.characterType) {
+                case 'fire':
+                    // 불꽃 장식
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(player.x + player.width/2, player.y + 2, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                case 'ice':
+                    // 얼음 결정 장식
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.beginPath();
+                    ctx.arc(player.x + player.width/2, player.y + 2, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                case 'wind':
+                    // 바람 장식
+                    ctx.fillStyle = '#98FB98';
+                    ctx.beginPath();
+                    ctx.arc(player.x + player.width/2, player.y + 2, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                default:
+                    // 기본 별 장식
+                    ctx.fillStyle = '#FFD700';
+                    ctx.fillRect(player.x + player.width/2 - 2, player.y + 1, 4, 4);
+                    break;
+            }
+            
+            // 체력바
+            ctx.fillStyle = '#FF0000';
+            ctx.fillRect(player.x, player.y - 10, player.width, 5);
+            ctx.fillStyle = '#00FF00';
+            ctx.fillRect(player.x, player.y - 10, (player.health / player.maxHealth) * player.width, 5);
+        }
+
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                ctx.fillStyle = enemy.frozen ? '#87CEEB' : enemy.color;
+                ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                
+                // 체력바
+                ctx.fillStyle = '#FF0000';
+                ctx.fillRect(enemy.x, enemy.y - 10, enemy.width, 5);
+                ctx.fillStyle = '#00FF00';
+                ctx.fillRect(enemy.x, enemy.y - 10, (enemy.health / getMaxHealth(enemy.type)) * enemy.width, 5);
+            });
+        }
+
+        function getMaxHealth(type) {
+            switch(type) {
+                case 'mini': return 5;
+                case 'medium': return 15;
+                case 'boss': return 50;
+                default: return 5;
+            }
+        }
+
+        function drawBullets() {
+            bullets.forEach(bullet => {
+                ctx.fillStyle = bullet.color;
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
+        }
+
+        function drawCoins() {
+            coins.forEach(coin => {
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.arc(coin.x + coin.width/2, coin.y + coin.height/2, coin.width/2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.fillStyle = '#000000';
+                ctx.font = '12px Arial';
+                ctx.fillText(coin.value, coin.x + 5, coin.y + 15);
+            });
+        }
+
+        function drawEggs() {
+            eggs.forEach(egg => {
+                ctx.fillStyle = egg.color;
+                ctx.fillRect(egg.x, egg.y, egg.width, egg.height);
+                
+                // 알 무늬
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(egg.x + 5, egg.y + 10, 20, 5);
+                ctx.fillRect(egg.x + 10, egg.y + 20, 10, 5);
+            });
+
+            // 특별한 알 그리기 (검은 알)
+            if (specialEgg && !specialEgg.collected) {
+                ctx.fillStyle = specialEgg.color;
+                ctx.fillRect(specialEgg.x, specialEgg.y, specialEgg.width, specialEgg.height);
+                
+                // 검은 알 무늬 (반짝이는 효과)
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(specialEgg.x + 5, specialEgg.y + 10, 20, 5);
+                ctx.fillRect(specialEgg.x + 10, specialEgg.y + 20, 10, 5);
+                
+                // 검은 알 표시
+                ctx.fillStyle = '#FF0000';
+                ctx.font = '12px Arial';
+                ctx.fillText('★', specialEgg.x + 10, specialEgg.y + 35);
+            }
+        }
+
+        // 따라오는 새 그리기
+        function drawCompanionBird() {
+            if (gameState.companionBird) {
+                ctx.fillStyle = gameState.companionBird.color;
+                ctx.fillRect(gameState.companionBird.x, gameState.companionBird.y, 
+                           gameState.companionBird.width, gameState.companionBird.height);
+                
+                // 새의 눈
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(gameState.companionBird.x + 5, gameState.companionBird.y + 5, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+                 // 블랙홀 그리기
+         function drawBlackHole() {
+             if (gameState.blackHoleActive) {
+                 // 블랙홀 중심
+                 ctx.fillStyle = '#000000';
+                 ctx.beginPath();
+                 ctx.arc(gameState.blackHoleX, gameState.blackHoleY, 15, 0, Math.PI * 2);
+                 ctx.fill();
+                 
+                 // 블랙홀 효과 (회전하는 원)
+                 ctx.strokeStyle = '#FFD700';
+                 ctx.lineWidth = 2;
+                 ctx.beginPath();
+                 ctx.arc(gameState.blackHoleX, gameState.blackHoleY, 25, 0, Math.PI * 2);
+                 ctx.stroke();
+                 
+                 ctx.beginPath();
+                 ctx.arc(gameState.blackHoleX, gameState.blackHoleY, 35, 0, Math.PI * 2);
+                 ctx.stroke();
+             }
+         }
+         
+         // 차원문 그리기
+         function drawPortal() {
+             if (gameState.portalActive) {
+                 // 차원문 배경 (반짝이는 효과)
+                 ctx.fillStyle = `rgba(138, 43, 226, ${0.5 + Math.sin(Date.now() * 0.01) * 0.3})`;
+                 ctx.fillRect(gameState.portalX, gameState.portalY, 60, 100);
+                 
+                 // 차원문 테두리
+                 ctx.strokeStyle = '#FFD700';
+                 ctx.lineWidth = 3;
+                 ctx.strokeRect(gameState.portalX, gameState.portalY, 60, 100);
+                 
+                 // 차원문 내부 효과
+                 ctx.fillStyle = '#FFFFFF';
+                 ctx.font = '16px Arial';
+                 ctx.fillText('PORTAL', gameState.portalX + 5, gameState.portalY + 50);
+                 ctx.fillText('P키', gameState.portalX + 15, gameState.portalY + 70);
+                 
+                 // 차원문 앞에 있을 때 안내
+                 if (checkPlayerInPortal()) {
+                     ctx.fillStyle = '#FFFF00';
+                     ctx.font = '14px Arial';
+                     ctx.fillText('P키로 차원문 진입!', gameState.portalX - 20, gameState.portalY - 10);
+                 }
+             }
+         }
+
+        function drawGuns() {
+            guns.forEach(gun => {
+                // 총 몸체
+                ctx.fillStyle = gun.color;
+                ctx.fillRect(gun.x, gun.y, gun.width, gun.height);
+                
+                // 총구
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(gun.x + gun.width, gun.y + 5, 5, 5);
+                
+                // 총 손잡이
+                ctx.fillStyle = '#654321';
+                ctx.fillRect(gun.x - 5, gun.y + 5, 5, 10);
+            });
+        }
+
+        function drawAmmoBoxes() {
+            ammoBoxes.forEach(ammoBox => {
+                // 총알 상자
+                ctx.fillStyle = ammoBox.color;
+                ctx.fillRect(ammoBox.x, ammoBox.y, ammoBox.width, ammoBox.height);
+                
+                // 총알 표시
+                ctx.fillStyle = '#000000';
+                ctx.font = '12px Arial';
+                ctx.fillText('AMMO', ammoBox.x + 2, ammoBox.y + 12);
+                ctx.fillText(ammoBox.ammo, ammoBox.x + 8, ammoBox.y + 25);
+            });
+        }
+
+        function drawWorld() {
+            if (gameState.shopInside) {
+                // 상점 내부
+                drawShopInside();
+            } else {
+                // 게임 월드
+                drawGameWorld();
+            }
+        }
+
+        function drawGameWorld() {
+            // 하늘
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, 300);
+            
+            // 구름들
+            clouds.forEach((cloud, index) => {
+                ctx.fillStyle = cloud.color;
+                
+                // 구름 타입에 따른 다양한 모양 그리기
+                switch(cloud.type) {
+                    case 'fluffy':
+                        // 부드럽고 푹신한 구름
+                        ctx.beginPath();
+                        ctx.arc(cloud.x + 20, cloud.y + 15, 25 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 45, cloud.y + 10, 30 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 70, cloud.y + 15, 25 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 90, cloud.y + 20, 20 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 35, cloud.y + 25, 20 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                        
+                    case 'wispy':
+                        // 얇고 가벼운 구름
+                        ctx.beginPath();
+                        ctx.arc(cloud.x + 30, cloud.y + 15, 20 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 60, cloud.y + 12, 18 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 85, cloud.y + 18, 15 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                        
+                    case 'puffy':
+                        // 둥글둥글한 구름
+                        ctx.beginPath();
+                        ctx.arc(cloud.x + 25, cloud.y + 15, 22 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 50, cloud.y + 15, 25 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 75, cloud.y + 15, 22 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 40, cloud.y + 25, 18 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                        
+                    case 'stormy':
+                        // 폭풍구름 (약간 어둡고 복잡한 모양)
+                        ctx.beginPath();
+                        ctx.arc(cloud.x + 15, cloud.y + 15, 28 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 40, cloud.y + 10, 32 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 65, cloud.y + 15, 28 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 90, cloud.y + 20, 25 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 30, cloud.y + 25, 20 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 55, cloud.y + 30, 18 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                        
+                    case 'cotton':
+                        // 솜털같은 구름
+                        ctx.beginPath();
+                        ctx.arc(cloud.x + 20, cloud.y + 15, 20 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 45, cloud.y + 12, 22 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 70, cloud.y + 15, 20 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 35, cloud.y + 22, 18 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                        
+                    default:
+                        // 기본 구름
+                        ctx.beginPath();
+                        ctx.arc(cloud.x + 30, cloud.y + 15, 30 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 60, cloud.y + 15, 25 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + 90, cloud.y + 15, 30 * cloud.baseSize, 0, Math.PI * 2);
+                        ctx.fill();
+                }
+            });
+            
+            // 사다리들
+            ladders.forEach(ladder => {
+                ctx.fillStyle = ladder.color;
+                ctx.fillRect(ladder.x, ladder.y, ladder.width, ladder.height);
+                
+                // 사다리 가로대
+                for (let i = 0; i < ladder.height; i += 15) {
+                    ctx.fillStyle = '#654321';
+                    ctx.fillRect(ladder.x - 5, ladder.y + i, ladder.width + 10, 3);
+                }
+            });
+            
+            // 땅
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(0, 500, canvas.width, 100);
+            
+                         // 동굴 (적 생성 위치)
+             ctx.fillStyle = '#2F4F4F';
+             ctx.fillRect(canvas.width - 100, 400, 100, 100);
+             
+             // 동굴 입구
+             ctx.fillStyle = '#000000';
+             ctx.fillRect(canvas.width - 80, 420, 60, 60);
+             
+             // 동굴 체력바
+             ctx.fillStyle = '#FF0000';
+             ctx.fillRect(canvas.width - 100, 390, 100, 10);
+             ctx.fillStyle = '#00FF00';
+             ctx.fillRect(canvas.width - 100, 390, (gameState.caveHealth / 100) * 100, 10);
+             
+             // 동굴 체력 텍스트
+             ctx.fillStyle = '#FFFFFF';
+             ctx.font = '12px Arial';
+             ctx.fillText(`동굴: ${gameState.caveHealth}`, canvas.width - 90, 385);
+            
+            // 동굴 위 플랫폼
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(canvas.width - 100, 380, 100, 20);
+            
+            // 상점 (플레이어 시작 위치 뒤)
+            ctx.fillStyle = '#FFD700';
+            ctx.fillRect(50, 400, 80, 100);
+            
+            // 상점 지붕
+            ctx.fillStyle = '#8B0000';
+            ctx.fillRect(45, 380, 90, 20);
+            
+            // 상점 문
+            ctx.fillStyle = '#654321';
+            ctx.fillRect(70, 450, 20, 50);
+            
+            // 상점 간판
+            ctx.fillStyle = '#FF0000';
+            ctx.font = '16px Arial';
+            ctx.fillText('SHOP', 60, 395);
+            
+            // 상점 앞 표시
+            if (checkPlayerInShop()) {
+                ctx.fillStyle = '#FFFF00';
+                ctx.font = '14px Arial';
+                ctx.fillText('S키로 들어가기', 40, 520);
+            }
+            
+            // 나무들
+            ctx.fillStyle = '#228B22';
+            for (let i = 0; i < 3; i++) {
+                ctx.fillRect(200 + i * 300, 400, 40, 100);
+                ctx.beginPath();
+                ctx.arc(220 + i * 300, 380, 50, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // 꽃들
+            ctx.fillStyle = '#FF69B4';
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.arc(100 + i * 150, 480, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawShopInside() {
+            // 상점 내부 배경
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 바닥
+            ctx.fillStyle = '#654321';
+            ctx.fillRect(0, 500, canvas.width, 100);
+            
+            // 벽
+            ctx.fillStyle = '#DEB887';
+            ctx.fillRect(0, 0, canvas.width, 500);
+            
+            // 천장
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(0, 0, canvas.width, 50);
+            
+            // 상점 내부 장식
+            ctx.fillStyle = '#FFD700';
+            ctx.fillRect(200, 100, 600, 300);
+            
+            // 상점 카운터
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(200, 350, 600, 50);
+            
+            // 상점 주인
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(800, 300, 40, 60);
+            
+            // 상점 주인 얼굴
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(820, 320, 12, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 상점 주인 눈
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(815, 318, 2, 0, Math.PI * 2);
+            ctx.arc(825, 318, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 상점 내부 텍스트
+            ctx.fillStyle = '#000000';
+            ctx.font = '24px Arial';
+            ctx.fillText('🏪 박민교 상점', 400, 80);
+            
+            ctx.font = '18px Arial';
+            ctx.fillText('총알 20개 - 1코인', 220, 150);
+            ctx.fillText('캐릭터 변경 - 5코인', 220, 180);
+            ctx.fillText('S키로 나가기', 220, 210);
+            
+            // 상점 내부 조작법
+            ctx.fillStyle = '#000000';
+            ctx.font = '16px Arial';
+            ctx.fillText('B: 총알 구매', 220, 250);
+            ctx.fillText('1,2,3: 캐릭터 변경', 220, 280);
+        }
+
+        function drawUI() {
+            ctx.fillStyle = '#000000';
+            ctx.font = '20px Arial';
+            ctx.fillText(`점수: ${gameState.score}`, 10, 30);
+            ctx.fillText(`코인: ${gameState.coins}`, 10, 60);
+            ctx.fillText(`체력: ${player.health}`, 10, 90);
+            // 현재 선택된 총알 정보
+            const selectedBullet = gameState.bulletInventory[gameState.selectedBulletType];
+            ctx.fillText(`총알: ${selectedBullet ? selectedBullet.name : '없음'}`, 10, 120);
+            ctx.fillText(`보유: ${selectedBullet ? selectedBullet.count : 0}`, 10, 140);
+            ctx.fillText(`레벨: ${gameState.level}`, 10, 150);
+            ctx.fillText(`세계: ${gameState.world}`, 10, 180);
+            ctx.fillText(`지역: ${gameState.currentArea}`, 10, 210);
+            ctx.fillText(`괴물 사냥: ${gameState.monstersKilled}/50`, 10, 240);
+            
+            // 상점 UI
+            if (gameState.shopOpen) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.fillRect(300, 100, 400, 400);
+                
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = '24px Arial';
+                ctx.fillText('🏪 상점', 450, 140);
+                
+                ctx.font = '18px Arial';
+                ctx.fillText('총알 20개 - 1코인', 320, 200);
+                ctx.fillText('B키로 구매', 320, 230);
+                ctx.fillText(`보유 코인: ${gameState.coins}`, 320, 260);
+                
+                // 캐릭터 변경 옵션
+                ctx.fillText('캐릭터 변경 (5코인):', 320, 300);
+                ctx.fillText('1: 불 캐릭터 (체력+20)', 320, 330);
+                ctx.fillText('2: 얼음 캐릭터 (총알+10)', 320, 360);
+                ctx.fillText('3: 바람 캐릭터 (점프+5)', 320, 390);
+                ctx.fillText('S키로 상점 닫기', 320, 420);
+            }
+            
+                         // 조작법 안내
+             ctx.fillStyle = '#000000';
+             ctx.font = '14px Arial';
+             ctx.fillText('S: 상점 UI / 상점 들어가기/나가기', 10, 270);
+             ctx.fillText('B: 총알 구매 (상점에서) / 블랙홀 소환', 10, 290);
+             ctx.fillText('1,2,3: 캐릭터 변경 (상점에서)', 10, 310);
+             ctx.fillText('↑↓: 사다리 오르내리기', 10, 330);
+             ctx.fillText('점프력 증가! 구름을 밟을 수 있어요!', 10, 350);
+             ctx.fillText('R: 부활 (죽었을 때)', 10, 370);
+             ctx.fillText('P: 차원문 진입 (차원문 열렸을 때)', 10, 390);
+             ctx.fillText('N: 다음 지역 이동 (괴물 50마리 처치 후)', 10, 410);
+             ctx.fillText('I: 총알 인벤토리 열기/닫기', 10, 430);
+             if (gameState.companionBird) {
+                 ctx.fillText('검은 알 수집 완료! 따라오는 새 활성화!', 10, 450);
+             }
+             if (gameState.shopInside) {
+                 ctx.fillText('상점 내부 - S키로 나가기', 10, 470);
+             }
+             
+             // 플레이어가 죽었을 때 부활 안내
+             if (gameState.playerDead) {
+                 ctx.fillStyle = '#FF0000';
+                 ctx.font = '20px Arial';
+                 ctx.fillText('플레이어가 죽었습니다! R키로 부활하세요!', 300, 200);
+             }
+             
+             // 차원문 안내
+             if (gameState.portalActive) {
+                 ctx.fillStyle = '#8A2BE2';
+                 ctx.font = '18px Arial';
+                 ctx.fillText('차원문이 열렸습니다! P키로 새로운 세계로 이동하세요!', 200, 250);
+             }
+             
+             // 다음 지역 이동 안내
+             if (gameState.canMoveToNextArea) {
+                 ctx.fillStyle = '#00FF00';
+                 ctx.font = '20px Arial';
+                 ctx.fillText('🎉 50마리 괴물 처치 완료! N키로 다음 지역으로 이동하세요!', 200, 280);
+             }
+             
+             // 인벤토리 UI
+             if (gameState.inventoryOpen) {
+                 ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+                 ctx.fillRect(200, 50, 600, 500);
+                 
+                 ctx.fillStyle = '#FFFFFF';
+                 ctx.font = '24px Arial';
+                 ctx.fillText('🎒 총알 인벤토리', 450, 90);
+                 
+                 ctx.font = '16px Arial';
+                 let yPos = 130;
+                 
+                 Object.keys(gameState.bulletInventory).forEach((type, index) => {
+                     const bullet = gameState.bulletInventory[type];
+                     const isSelected = gameState.selectedBulletType === type;
+                     
+                     // 선택된 총알 강조
+                     if (isSelected) {
+                         ctx.fillStyle = '#FFFF00';
+                         ctx.fillRect(220, yPos - 15, 560, 25);
+                     }
+                     
+                     ctx.fillStyle = isSelected ? '#000000' : '#FFFFFF';
+                     ctx.fillText(`${index + 1}: ${bullet.name}`, 240, yPos);
+                     ctx.fillText(`보유: ${bullet.count}/${bullet.maxCount}`, 400, yPos);
+                     ctx.fillText(`데미지: ${bullet.damage}`, 520, yPos);
+                     
+                     // 총알 색상 표시
+                     ctx.fillStyle = bullet.color;
+                     ctx.fillRect(650, yPos - 10, 20, 10);
+                     
+                     yPos += 30;
+                 });
+                 
+                 ctx.fillStyle = '#FFFFFF';
+                 ctx.font = '14px Arial';
+                 ctx.fillText('I키로 인벤토리 닫기', 450, 520);
+                 ctx.fillText('1-5키로 총알 타입 선택', 450, 540);
+             }
+        }
+
+                 // 메인 게임 루프
+         function gameLoop() {
+             // 화면 클리어
+             ctx.clearRect(0, 0, canvas.width, canvas.height);
+             
+             // 게임 업데이트
+             updateGame();
+             
+             // 그리기
+             drawWorld();
+             if (!gameState.shopInside) {
+                 // 게임 월드에서만 그리기
+                 drawEnemies();
+                 drawBullets();
+                 drawCoins();
+                 drawEggs();
+                 drawGuns();
+                 drawAmmoBoxes();
+                 drawCompanionBird();
+                 drawBlackHole();
+                 drawPortal();
+             }
+             drawPlayer();
+             drawUI();
+             
+             // 게임 오버 화면 표시
+             if (gameState.gameOver) {
+                 gameOver();
+             }
+             
+             requestAnimationFrame(gameLoop);
+         }
+
+        // 적 생성 타이머
+        setInterval(() => {
+            if (Math.random() < 0.3) {
+                createEnemy();
+            }
+        }, 2000);
+
+        // 알 생성 타이머
+        setInterval(() => {
+            if (Math.random() < 0.1) {
+                createEgg();
+            }
+        }, 5000);
+
+        // 총 생성 타이머
+        setInterval(() => {
+            if (Math.random() < 0.05) {
+                createGun();
+            }
+        }, 8000);
+
+        // 총알 상자 생성 타이머
+        setInterval(() => {
+            if (Math.random() < 0.08) {
+                createAmmoBox();
+            }
+        }, 6000);
+
+        // 구름 생성
+        createClouds();
+
+        // 게임 시작
+        console.log("박민교의 무한한 알과 세계 게임이 시작되었습니다!");
+        gameLoop();
+    </script>
+</body>
+</html> 
